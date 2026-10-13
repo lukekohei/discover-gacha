@@ -3,7 +3,7 @@ window.staff=(()=>{
  const $=s=>document.querySelector(s);
  function load(){const raw=localStorage.getItem(KEY);if(raw===null)return null;const data=JSON.parse(raw);if(!StaffPassword.valid(data))throw Error();return data}
  function resetFields(){for(const id of ['#auth-current','#auth-password','#auth-confirm'])$(id).value='';$('#auth-error').textContent=''}
- function lock(){epoch++;unlocked=false;clearTimeout(idleTimer);if($('#settings').open)$('#settings').close();if($('#auth').open)$('#auth').close();resetFields()}
+ function lock(){$('#history-confirm').hidden=true;epoch++;unlocked=false;clearTimeout(idleTimer);if($('#settings').open)$('#settings').close();if($('#auth').open)$('#auth').close();resetFields()}
  function refreshIdle(){clearTimeout(idleTimer);if(unlocked)idleTimer=setTimeout(lock,120000)}
  function promptAuth(change=false){
   resetFields();
@@ -17,7 +17,7 @@ window.staff=(()=>{
   $('#auth-submit').textContent=mode==='login'?'開く':'設定する';
   $('#auth').showModal();setTimeout(()=>$(mode==='change'?'#auth-current':'#auth-password').focus(),50);
  }
- function showSettings(){unlocked=true;refreshIdle();$('#slot').value=db.slot;$('#auto').checked=db.auto;renderRows();$('#notice').textContent='';page=0;renderHistory();$('#settings').showModal()}
+ function showSettings(){unlocked=true;refreshIdle();$('#slot').value=db.slot;$('#auto').checked=db.auto;renderRows();$('#notice').textContent='';page=0;renderHistory();renderStock();$('#history-confirm').hidden=true;$('#settings').showModal()}
  function open(){if(busy)return;if(unlocked)showSettings();else promptAuth()}
  async function submit(e){
   e.preventDefault();if(working)return;const token=epoch;working=true;$('#auth-submit').disabled=true;$('#auth-error').textContent='';
@@ -33,19 +33,32 @@ window.staff=(()=>{
    if(token!==epoch)return;$('#auth').close();resetFields();showSettings();
   }catch(e){$('#auth-error').textContent=e.message||'保存できませんでした。'}finally{working=false;$('#auth-submit').disabled=false}
  }
+ function renderStock(){
+  const root=$('#stock-cards');root.replaceChildren();let total=0,unlimited=0;
+  letters.forEach((l,i)=>{const n=db.stock[i],card=document.createElement('div');card.className='stock-card'+(n===0?' empty':'');const title=document.createElement('b'),number=document.createElement('strong'),status=document.createElement('span');title.textContent=l+'賞';number.textContent=n===-1?'無制限':n+'個';status.textContent=n===-1?'個数管理なし':n===0?'在庫なし':'残り在庫';card.append(title);card.append(number);card.append(status);root.append(card);if(n===-1)unlimited++;else total+=n});
+  $('#stock-total').textContent=unlimited===5?'全賞が無制限です。実在庫を入力すると個数を管理できます。':'個数管理中の在庫：合計 '+total+'個'+(unlimited?' ／ 無制限 '+unlimited+'賞':'');
+ }
  function renderHistory(){
-  const history=db.history||[],counts=Object.fromEntries(letters.map(l=>[l,0]));for(const h of history)if(h.prize in counts)counts[h.prize]++;
+  const history=db.history||[];$('#reset-history').disabled=history.length===0;const counts=Object.fromEntries(letters.map(l=>[l,0]));for(const h of history)if(h.prize in counts)counts[h.prize]++;
   $('#history-count').textContent='抽選合計 '+history.length+'回';$('#history-summary').textContent=letters.map(l=>l+'賞 '+counts[l]+'回').join('　');
   const totalPages=Math.max(1,Math.ceil(history.length/50));page=Math.min(page,totalPages-1);$('#history-page').textContent=(page+1)+' / '+totalPages+'ページ';$('#history-prev').disabled=page===0;$('#history-next').disabled=page===totalPages-1;
   const body=$('#history-rows');body.replaceChildren();const items=history.slice().reverse().slice(page*50,(page+1)*50);
   if(!items.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='まだ抽選履歴はありません。';tr.append(td);body.append(tr)}
   for(const h of items){const tr=document.createElement('tr');let date='日時不明';try{date=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(h.time))}catch{}for(const value of [date,letters.includes(h.prize)?h.prize+'賞':'不明',['通常','午前','午後','夕方'][h.slot]||'通常']){const td=document.createElement('td');td.textContent=value;tr.append(td)}body.append(tr)}
  }
+ $('#reset-history').onclick=()=>{if(!unlocked||!db.history.length)return;$('#reset-description').textContent='抽選履歴 '+db.history.length+'件を削除します。元に戻せません。';$('#history-confirm').hidden=false;refreshIdle()};
+ $('#cancel-reset-history').onclick=()=>{$('#history-confirm').hidden=true};
+ $('#confirm-reset-history').onclick=()=>{
+  if(!unlocked||$('#history-confirm').hidden)return;
+  const previous=db.history;db.history=[];
+  if(!persist()){db.history=previous;$('#notice').textContent='履歴を保存できませんでした。削除していません。';return}
+  page=0;$('#history-confirm').hidden=true;renderHistory();renderStock();$('#notice').textContent='履歴をリセットしました。在庫と設定はそのままです。';refreshIdle();
+ };
  $('#auth-form').onsubmit=submit;$('#auth-cancel').onclick=()=>{if(!working)lock()};$('#auth').addEventListener('cancel',e=>{e.preventDefault();if(!working)lock()});
  $('#close').onclick=lock;$('#settings').addEventListener('cancel',e=>{e.preventDefault();lock()});
  $('#change-password').onclick=()=>{unlocked=false;clearTimeout(idleTimer);$('#settings').close();promptAuth(true)};
  $('#history-prev').onclick=()=>{page--;renderHistory()};$('#history-next').onclick=()=>{page++;renderHistory()};
  $('#settings').addEventListener('pointerdown',refreshIdle);$('#settings').addEventListener('keydown',refreshIdle);
  document.addEventListener('visibilitychange',()=>{if(document.hidden)lock()});
- return {open,lock,isUnlocked:()=>unlocked};
+ return {open,lock,isUnlocked:()=>unlocked,refreshStock:renderStock};
 })();
