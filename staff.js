@@ -17,7 +17,7 @@ window.staff=(()=>{
   $('#auth-submit').textContent=mode==='login'?'開く':'設定する';
   $('#auth').showModal();setTimeout(()=>$(mode==='change'?'#auth-current':'#auth-password').focus(),50);
  }
- function showSettings(){unlocked=true;refreshIdle();$('#slot').value=db.slot;$('#auto').checked=db.auto;renderRows();$('#notice').textContent='';page=0;renderHistory();renderStock();$('#history-confirm').hidden=true;$('#settings').showModal()}
+ function showSettings(){unlocked=true;refreshIdle();renderSettings();$('#notice').textContent='';page=0;renderHistory();renderStock();$('#history-confirm').hidden=true;$('#settings').showModal()}
  function open(){if(busy)return;if(unlocked)showSettings();else promptAuth()}
  async function submit(e){
   e.preventDefault();if(working)return;const token=epoch;working=true;$('#auth-submit').disabled=true;$('#auth-error').textContent='';
@@ -44,7 +44,7 @@ window.staff=(()=>{
   const totalPages=Math.max(1,Math.ceil(history.length/50));page=Math.min(page,totalPages-1);$('#history-page').textContent=(page+1)+' / '+totalPages+'ページ';$('#history-prev').disabled=page===0;$('#history-next').disabled=page===totalPages-1;
   const body=$('#history-rows');body.replaceChildren();const items=history.slice().reverse().slice(page*50,(page+1)*50);
   if(!items.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='まだ抽選履歴はありません。';tr.append(td);body.append(tr)}
-  for(const h of items){const tr=document.createElement('tr');let date='日時不明';try{date=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(h.time))}catch{}for(const value of [date,letters.includes(h.prize)?h.prize+'賞':'不明',['通常','午前','午後','夕方'][h.slot]||'通常']){const td=document.createElement('td');td.textContent=value;tr.append(td)}body.append(tr)}
+  for(const h of items){const tr=document.createElement('tr');let date='日時不明';try{date=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(h.time))}catch{}for(const value of [date,letters.includes(h.prize)?h.prize+'賞':'不明',h.slotLabel||['通常','午前','午後','夕方'][h.slot]||'通常']){const td=document.createElement('td');td.textContent=value;tr.append(td)}body.append(tr)}
  }
  $('#reset-history').onclick=()=>{if(!unlocked||!db.history.length)return;$('#reset-description').textContent='抽選履歴 '+db.history.length+'件を削除します。元に戻せません。';$('#history-confirm').hidden=false;refreshIdle()};
  $('#cancel-reset-history').onclick=()=>{$('#history-confirm').hidden=true};

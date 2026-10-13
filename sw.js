@@ -1,6 +1,6 @@
-const VERSION='discover-gacha-pwa-v4-stock-history';
+const VERSION='discover-gacha-pwa-v5-schedule';
 const CACHE=VERSION+'-'+self.registration.scope;
-const FILES=['./','index.html','offline.js','password.js','staff.js','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png','videos/A.mp4','videos/B.mp4','videos/C.mp4','videos/D.mp4','videos/E.mp4'];
+const FILES=['./','index.html','offline.js','password.js','staff.js','app.js','schedule.js','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png','videos/A.mp4','videos/B.mp4','videos/C.mp4','videos/D.mp4','videos/E.mp4'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(FILES.map(f=>new Request(new URL(f,self.registration.scope),{cache:'reload'})));await self.skipWaiting()})()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 async function ranged(response,range){

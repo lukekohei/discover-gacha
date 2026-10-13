@@ -8,7 +8,7 @@
   const reg=await navigator.serviceWorker.ready;
   const check=()=>new Promise(resolve=>{const ch=new MessageChannel();const timeout=setTimeout(()=>resolve(false),10000);ch.port1.onmessage=e=>{clearTimeout(timeout);resolve(e.data.ready)};reg.active.postMessage({type:'CHECK_OFFLINE'},[ch.port2])});
   const ready=await check();clearTimeout(timer);
-  label.textContent=ready?'オフライン準備完了（在庫・履歴管理版）':'保存が未完了です。通信接続中に開き直してください';
+  label.textContent=ready?'オフライン準備完了（時間帯一括設定版）':'保存が未完了です。通信接続中に開き直してください';
   if(ready&&navigator.storage?.persist)navigator.storage.persist().catch(()=>{});
  }catch(e){clearTimeout(timer);label.textContent='保存できませんでした。通信接続中に開き直してください'}
 })();
