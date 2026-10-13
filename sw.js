@@ -1,19 +1,63 @@
-const VERSION='discover-gacha-pwa-v2-halloween-all';
-const CACHE=VERSION+'-'+self.registration.scope;
-const FILES=['./','index.html','offline.js','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png','videos/A.mp4','videos/B.mp4','videos/C.mp4','videos/D.mp4','videos/E.mp4'];
-self.addEventListener('install',event=>event.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(FILES.map(f=>new Request(new URL(f,self.registration.scope),{cache:'reload'})));await self.skipWaiting()})()));
-self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
-async function ranged(response,range){
- const data=await response.arrayBuffer(),size=data.byteLength;
- const m=/^bytes=(\d*)-(\d*)$/.exec(range);
- if(!m||(!m[1]&&!m[2]))return new Response(null,{status:416,headers:{'Content-Range':`bytes */${size}`}});
- let start=m[1]?Number(m[1]):Math.max(0,size-Number(m[2]));
- let end=m[1]?(m[2]?Math.min(Number(m[2]),size-1):size-1):size-1;
- if(start>=size||end<start)return new Response(null,{status:416,headers:{'Content-Range':`bytes */${size}`}});
- return new Response(data.slice(start,end+1),{status:206,headers:{'Content-Type':response.headers.get('Content-Type')||'video/mp4','Accept-Ranges':'bytes','Content-Range':`bytes ${start}-${end}/${size}`,'Content-Length':String(end-start+1)}});
-}
-self.addEventListener('fetch',event=>{
- if(event.request.method!=='GET'||!event.request.url.startsWith(self.registration.scope))return;
- event.respondWith((async()=>{const c=await caches.open(CACHE);let hit=await c.match(event.request.url);if(!hit&&event.request.mode==='navigate')hit=await c.match(new URL('index.html',self.registration.scope));if(hit){const range=event.request.headers.get('Range');return range?await ranged(hit,range):hit}return fetch(event.request)})());
+/* ブースヒアリング Service Worker
+ * - 全アセットをプリキャッシュし、以後はキャッシュのみで動作（オフライン完全対応）
+ * - 外部への通信は行わない（同一オリジンのGETのみ処理）
+ * - アプリを更新したら、必ず下の VERSION を変更して配信すること
+ */
+const VERSION = '3.1.0';
+const CACHE = 'booth-hearing-' + VERSION;
+const ASSETS = [
+  './',
+  './index.html',
+  './app.js',
+  './manifest.json',
+  './icons/icon-180.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      cache.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))
+    )
+  );
+  // 自動では切り替えない（入力中の画面を勝手に再読み込みしないため）。
+  // 設定画面の「更新して再読み込み」から SKIP_WAITING を受けて切り替える。
 });
-self.addEventListener('message',event=>{if(event.data?.type==='CHECK_OFFLINE')event.waitUntil((async()=>{const c=await caches.open(CACHE);const results=await Promise.all(FILES.map(f=>c.match(new URL(f,self.registration.scope))));event.ports[0]?.postMessage({ready:results.every(Boolean),version:VERSION})})())});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys.filter((k) => k.startsWith('booth-hearing-') && k !== CACHE).map((k) => caches.delete(k))
+    );
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data === 'GET_VERSION' && event.source) event.source.postMessage({ type: 'VERSION', version: VERSION });
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    if (req.mode === 'navigate') {
+      const page = await cache.match('./index.html');
+      if (page) return page;
+    }
+    const hit = await cache.match(req, { ignoreSearch: true });
+    if (hit) return hit;
+    try {
+      return await fetch(req);
+    } catch (e) {
+      return new Response('オフラインのため取得できません', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+  })());
+});

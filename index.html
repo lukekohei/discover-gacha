@@ -1,6 +1,403 @@
-<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="theme-color" content="#030b22"><title>DISCOVER GACHA</title><style>
-*{box-sizing:border-box}body{margin:0;background:#030b22;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Arial',sans-serif;overflow:hidden}canvas{position:fixed;inset:0;width:100%;height:100%}.ui{position:relative;height:100dvh;min-height:600px;padding:40px 52px;display:flex;flex-direction:column;pointer-events:none}header{display:flex;justify-content:space-between;align-items:center}header b{font-size:22px;letter-spacing:3px}header span{font-size:14px;color:#93b5de;letter-spacing:2px}.main{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.eyebrow{color:#74d8ff;letter-spacing:6px;font-size:14px}h1{font-size:clamp(45px,7vw,85px);font-weight:500;letter-spacing:9px;margin:20px 0 15px}.sub{color:#adbfda;font-size:18px;margin-bottom:35px}button{pointer-events:auto;color:white;border:1px solid #55b8ff;border-radius:5px;background:linear-gradient(110deg,#1051df,#087fae);font-size:22px;padding:22px 70px;cursor:pointer;touch-action:manipulation;box-shadow:0 0 40px #1575e544}button:disabled{opacity:.45}footer{display:flex;justify-content:space-between;align-items:center;color:#81a1c4;font-size:14px}.ghost{padding:10px 17px;background:transparent;border-color:#334d70;font-size:14px;box-shadow:none}.prizes{display:flex;gap:26px;margin-top:40px;color:#88aaca;font-size:16px}.prizes b{color:#d3e8ff;font-size:22px;margin-right:5px}dialog{width:min(850px,95vw);max-height:85dvh;background:#0b1933;color:white;border:1px solid #385e91;border-radius:12px;padding:28px;overflow:auto}dialog::backdrop{background:#000a}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left}input,select{font-size:16px;background:#14294a;color:white;border:1px solid #44648a;padding:8px;width:100%}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}.actions button{font-size:16px;padding:12px 20px}video{position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#030b22;display:none}#result{display:none}#result h1{font-size:110px;margin:0}small{color:#aac3e0}#status{color:#ffd18a} @media(max-width:650px){.ui{padding:25px;min-height:500px}header b{font-size:16px}header span{display:none}h1{letter-spacing:3px}.prizes{gap:12px}.prizes b{font-size:18px}button{padding:20px 50px}}
-</style><canvas id="canvas"></canvas><div class="ui" id="ui"><header><b>DISCOVER <span style="color:#5fcfff">2026</span></b><span>EXHIBITION / PRIZE GACHA</span></header><section class="main" id="home"><div class="eyebrow">DISCOVER YOUR CHANCE</div><h1>次の出会いに、<br>小さなサプライズを。</h1><p class="sub">画面をタップして、景品を抽選</p><button id="draw">ガチャをまわす</button><div class="prizes"><span><b>A</b>賞</span><span><b>B</b>賞</span><span><b>C</b>賞</span><span><b>D</b>賞</span><span><b>E</b>賞</span></div><p id="status"></p></section><section class="main" id="result"><div class="eyebrow">CONGRATULATIONS</div><h1 id="prize"></h1><p class="sub">おめでとうございます<br>この画面をスタッフにお見せください</p><button id="next">次の抽選へ</button></section><footer><span id="offline-state" role="status">オフライン準備を確認中…</span><button class="ghost" id="admin">スタッフ設定</button></footer></div><video id="movie" playsinline preload="auto"></video><dialog id="settings"><h2>スタッフ設定</h2><p><small>A〜E賞：全賞ハロウィン2D版（各7秒）。初期値は仮設定です。抽選結果はこの端末に保存されます。</small></p><label>時間帯 <select id="slot"><option value="0">通常</option><option value="1">午前 10:00–12:00</option><option value="2">午後 12:00–15:00</option><option value="3">夕方 15:00–18:00</option></select></label><p><label><input type="checkbox" id="auto" style="width:auto"> 時刻で自動切替（日本時間・時間外は通常）</label></p><table><thead><tr><th>賞</th><th>排出比率</th><th>残数</th><th>演出確認</th></tr></thead><tbody id="rows"></tbody></table><p><small>比率は合計100以外でも自動換算。残数−1は無制限、0は抽選対象外です。演出確認は在庫を減らしません。</small></p><div class="actions"><button id="save">設定を保存</button><button id="export">履歴を書き出す</button><button class="ghost" id="close">閉じる</button></div><p id="notice"></p></dialog><script>
-const $=s=>document.querySelector(s),letters=['A','B','C','D','E'];let fallback=false;let db;try{db=JSON.parse(localStorage.getItem('discover-gacha-v1'))}catch{}if(!db)db={weights:Array.from({length:4},()=>[2,8,20,30,40]),stock:[-1,-1,-1,-1,-1],auto:false,slot:0,history:[]};let busy=false,preview=false,current=-1;function persist(){try{localStorage.setItem('discover-gacha-v1',JSON.stringify(db));return true}catch{$('#status').textContent='保存できません。スタッフに確認してください。';return false}}function slot(){if(!db.auto)return db.slot;const h=Number(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tokyo',hour:'numeric',hourCycle:'h23'}).format(new Date()));return h>=10&&h<12?1:h>=12&&h<15?2:h>=15&&h<18?3:0}function random(){let a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/4294967296}function draw(){if(busy)return;const s=slot(),w=db.weights[s].map((v,i)=>db.stock[i]===0?0:v),total=w.reduce((a,b)=>a+b,0);if(!total){$('#status').textContent='抽選を停止しています。スタッフにお声がけください。';return}let n=random()*total,i=w.findIndex(v=>(n-=v)<0);if(i<0)i=4;const old=JSON.stringify(db);if(db.stock[i]>0)db.stock[i]--;db.history.push({id:Date.now()+'-'+Math.floor(random()*1e6),time:new Date().toISOString(),prize:letters[i],slot:s});if(!persist()){db=JSON.parse(old);return}play(i,false)}function play(i,test){busy=true;preview=test;current=i;$('#settings').close();$('#ui').style.visibility='hidden';$('#movie').src='videos/'+letters[i]+'.mp4';$('#movie').style.display='block';$('#movie').onended=reveal;$('#movie').onerror=()=>{if(fallback)return;fallback=true;$('#movie').style.display='none';animStart=performance.now();setTimeout(()=>{fallback=false;animStart=0;reveal()},6000)};$('#movie').play().catch(()=>$('#movie').onerror())}function reveal(){if(!busy)return;busy=false;$('#movie').pause();$('#movie').style.display='none';$('#ui').style.visibility='visible';$('#home').style.display='none';$('#result').style.display='flex';$('#prize').textContent=letters[current]+'賞';$('#result .eyebrow').textContent=preview?'PREVIEW / 演出確認':'CONGRATULATIONS';$('#next').textContent=preview?'設定に戻る':'次の抽選へ'}$('#draw').onclick=draw;$('#next').onclick=()=>{$('#home').style.display='flex';$('#result').style.display='none';if(preview)openSettings()};function renderRows(){let s=+$('#slot').value;$('#rows').innerHTML=letters.map((l,i)=>`<tr><td>${l}賞</td><td><input type="number" min="0" max="100000" step="any" data-w="${i}" value="${db.weights[s][i]}"></td><td><input type="number" min="-1" max="1000000" data-s="${i}" value="${db.stock[i]}"></td><td><button class="ghost" onclick="play(${i},true)">再生</button></td></tr>`).join('')}function openSettings(){if(busy)return;$('#slot').value=db.slot;$('#auto').checked=db.auto;renderRows();$('#notice').textContent='';$('#settings').showModal()}$('#admin').onclick=openSettings;$('#slot').onchange=renderRows;$('#close').onclick=()=>$('#settings').close();$('#save').onclick=()=>{let w=[...document.querySelectorAll('[data-w]')].map(e=>+e.value),st=[...document.querySelectorAll('[data-s]')].map(e=>+e.value);if(w.some(x=>!Number.isFinite(x)||x<0||x>100000)||!w.some(x=>x>0)||st.some(x=>!Number.isInteger(x)||x< -1||x>1000000)){$('#notice').textContent='比率と残数を確認してください。';return}db.slot=+$('#slot').value;db.weights[db.slot]=w;db.stock=st;db.auto=$('#auto').checked;if(persist())$('#notice').textContent='保存しました。'};$('#export').onclick=()=>{const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='gacha-history.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-const c=$('#canvas'),ctx=c.getContext('2d');let animStart=0;function render(t,prize=null){c.width=1280;c.height=960;const x=ctx;let g=x.createLinearGradient(0,0,1280,960);g.addColorStop(0,'#02102c');g.addColorStop(1,'#061838');x.fillStyle=g;x.fillRect(0,0,1280,960);let glow=x.createRadialGradient(640,460,10,640,460,600);glow.addColorStop(0,'#1263bf66');glow.addColorStop(1,'#00000000');x.fillStyle=glow;x.fillRect(0,0,1280,960);x.strokeStyle='#288fd315';x.lineWidth=1;for(let i=-20;i<25;i++){x.beginPath();x.moveTo(i*90+t*12%90,0);x.lineTo(i*90+560+t*12%90,960);x.stroke()}const movie=prize!==null,phase=movie?Math.min(t/3,1):0; x.save();x.translate(640,450);for(let r=0;r<5;r++){x.save();x.rotate(t*(r%2?-.16:.12)+r*.5);x.strokeStyle=movie?'#51caff99':'#51caff35';x.lineWidth=r===0?3:1;x.beginPath();x.arc(0,0,170+r*38+Math.sin(t*1.5)*8,0,Math.PI*1.65);x.stroke();x.restore()}for(let i=0;i<70;i++){let a=i*2.399+t*.13,rad=movie&&t>3?230+(t-3)*70+(i%7)*35:100+(i*43%330);x.fillStyle=i%3?'#47bafa88':'#b8edff';x.fillRect(Math.cos(a)*rad,Math.sin(a)*rad,2+(i%3),2+(i%3))}x.restore();if(movie){x.textAlign='center';x.fillStyle='#80d9ff';x.font='18px Arial';x.fillText(t<3?'DISCOVER / DRAWING':'DISCOVER / CONGRATULATIONS',640,135);if(t<3){x.fillStyle='#ecfaff';x.font='300 72px Arial';x.fillText(['A','B','C','D','E'][Math.floor(t*13)%5],640,475);x.font='20px Arial';x.fillStyle='#91bcdc';x.fillText('YOUR NEXT DISCOVERY',640,750)}else{const k=Math.min(1,(t-3)*3),colors=['#eef8ff','#a0edff','#67c9ff','#78aaff','#9ebfff'];x.save();x.translate(640,455);x.scale(.7+.3*k,.7+.3*k);x.shadowColor='#5ecbff';x.shadowBlur=prize===0?55:25;x.fillStyle=colors[prize];x.font='500 250px Arial';x.fillText(letters[prize],0,65);x.shadowBlur=0;x.font='28px Arial';x.fillText('P R I Z E',0,130);x.restore();x.fillStyle='#d2eaff';x.font='30px sans-serif';x.fillText('おめでとうございます',640,750);if(prize===0){x.strokeStyle='#ade7ff88';for(let i=0;i<12;i++){let a=i*Math.PI/6;x.beginPath();x.moveTo(640+Math.cos(a)*310,455+Math.sin(a)*310);x.lineTo(640+Math.cos(a)*550,455+Math.sin(a)*550);x.stroke()}}}x.fillStyle='#597f9e';x.font='16px Arial';x.fillText('CTC DISCOVER 2026',640,895)}}window.renderFrame=(t,p)=>render(t,p);function loop(now){render(animStart?(now-animStart)/1000:now/1000,animStart?current:null);requestAnimationFrame(loop)}requestAnimationFrame(loop);
-</script><script src="offline.js"></script></html>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'none'; base-uri 'none'; object-src 'none'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ヒアリング">
+<meta name="theme-color" content="#0f5c63">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>ブースヒアリング</title>
+<style>
+:root{
+  --pri:#0f5c63; --pri-d:#0a454a; --pri-l:#e3f1f2;
+  --ink:#1b2328; --sub:#5b6770; --line:#cfd8dc; --bg:#f1f4f5; --card:#fff;
+  --warn:#9a4a00; --warn-bg:#fff1dc; --warn-line:#f0a24a;
+  --dng:#b3261e; --dng-bg:#fdecea; --ok:#1e7d3a; --hot:#c2410c;
+  --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
+  --sal:env(safe-area-inset-left); --sar:env(safe-area-inset-right);
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:17px;line-height:1.45;
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",sans-serif;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{font:inherit;color:inherit;touch-action:manipulation;cursor:pointer;-webkit-user-select:none;user-select:none;border:0;background:none}
+button:disabled{opacity:.4;cursor:default}
+input,textarea{font:inherit;font-size:18px;color:var(--ink)}
+[hidden]{display:none !important}
+
+/* ---------- ヘッダー ---------- */
+#chrome{position:sticky;top:0;z-index:20}
+#topbar{background:var(--pri);color:#fff;display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;
+  padding:calc(var(--sat) + 8px) calc(var(--sar) + 16px) 8px calc(var(--sal) + 16px)}
+.stat{display:flex;flex-direction:column;justify-content:center;min-height:52px;padding:4px 14px;border-radius:12px;background:rgba(255,255,255,.12);text-align:left}
+.stat .k{font-size:12px;opacity:.85}
+.stat .v{font-size:20px;font-weight:700;line-height:1.2;white-space:nowrap}
+.stat .v small{font-size:13px;font-weight:600;opacity:.9}
+#st-backup{flex:1 1 260px;color:#fff;border:2px solid transparent}
+#st-backup .sub{font-size:13px;opacity:.9}
+#st-backup.warn{background:#ffb020;color:#2b1800;border-color:#fff;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 5px rgba(255,176,32,.45)}}
+#btn-survey{min-height:52px;padding:0 18px;border-radius:12px;background:#fff;color:var(--pri-d);font-weight:700}
+#tabs{display:flex;background:#fff;border-bottom:1px solid var(--line);padding:0 calc(var(--sar) + 8px) 0 calc(var(--sal) + 8px)}
+#tabs button{flex:1;min-height:52px;font-weight:700;color:var(--sub);border-bottom:4px solid transparent;position:relative}
+#tabs button[aria-selected="true"]{color:var(--pri);border-bottom-color:var(--pri)}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:var(--dng);color:#fff;font-size:13px;margin-left:4px;padding:0 6px}
+.count{font-weight:600;color:var(--sub);font-size:14px}
+
+main{max-width:1100px;margin:0 auto;padding:12px calc(var(--sar) + 16px) calc(var(--sab) + 110px) calc(var(--sal) + 16px)}
+.banner{border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:15px}
+.banner.warn{background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn)}
+.banner.info{background:var(--pri-l);border:1px solid #9fcbd0;color:var(--pri-d)}
+.banner.dng{background:var(--dng-bg);border:1px solid #efb1ab;color:var(--dng)}
+#edit-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-weight:700}
+#edit-banner button{margin-left:auto}
+
+/* ---------- 入力フォーム ---------- */
+.field{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px 12px;margin-bottom:10px;display:grid;grid-template-columns:1fr;gap:6px}
+.field .label{font-weight:700;font-size:16px;color:var(--pri-d)}
+.field .label small{font-weight:500;color:var(--sub);margin-left:6px;font-size:13px}
+.req{font-style:normal;font-size:12px;background:var(--dng);color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+.field.missing{border-color:var(--dng);box-shadow:0 0 0 3px var(--dng-bg)}
+@media (min-width:900px){
+  .field:not(.stack){grid-template-columns:180px 1fr;align-items:start;column-gap:14px}
+  .field:not(.stack) .label{padding-top:13px}
+  .field:not(.stack) .label small{display:block;margin-left:0}
+}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:52px;min-width:92px;padding:6px 16px;border:2px solid var(--line);background:#fff;border-radius:12px;font-size:17px;font-weight:600;line-height:1.25;text-align:center}
+.chip[aria-pressed="true"]{background:var(--pri);border-color:var(--pri);color:#fff}
+.chips.multi .chip[aria-pressed="true"]::before{content:"✓ "}
+.chip.legacy{border-style:dashed}
+.chip.legacy::after{content:"（旧）";font-size:12px}
+.chip.feat{border:3px solid #2563eb;background:#eef4ff;color:#1e3a8a}
+.chip.feat[aria-pressed="true"]{background:#2563eb;border-color:#2563eb;color:#fff}
+.chip.hot{border-color:#f3b08f;color:var(--hot)}
+.chip.hot[aria-pressed="true"]{background:var(--hot);border-color:var(--hot);color:#fff}
+.txt{width:100%;min-height:52px;padding:8px 14px;border:2px solid var(--line);border-radius:12px;background:#fff}
+.txt:focus{outline:none;border-color:var(--pri)}
+.hint{margin:6px 0 0;font-size:13px;color:var(--sub)}
+.hint.w{color:var(--dng);font-weight:600}
+.fmsg{min-height:20px;font-size:14px;font-weight:600}
+.fmsg.ok{color:var(--ok)} .fmsg.warn{color:var(--warn)} .fmsg.dng{color:var(--dng)}
+
+/* 来場者ID */
+.vids{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.vid{display:flex;align-items:stretch;border:2px solid var(--pri);border-radius:14px;background:var(--pri-l);overflow:hidden}
+.vid.bad{border-color:var(--warn-line);background:var(--warn-bg)}
+.vid.dup{border-color:var(--dng);background:var(--dng-bg)}
+.vid-main{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:4px 14px;min-height:60px;min-width:130px}
+.vid-main small{font-size:12px;color:var(--sub);font-weight:600}
+.vid-main b{font-size:24px;letter-spacing:.06em;font-variant-numeric:tabular-nums;line-height:1.15}
+.vid-x{min-width:52px;font-size:24px;color:var(--sub);border-left:1px solid rgba(0,0,0,.1)}
+.vid-add{min-height:64px;padding:0 22px;border:2px dashed var(--pri);border-radius:14px;color:var(--pri);font-weight:800;font-size:19px;background:#fff}
+.vid-add.first{background:var(--pri);color:#fff;border-style:solid;min-width:280px}
+
+/* 取引・案件状況 */
+.deal{display:flex;flex-direction:column;gap:8px}
+.deal-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.deal-row .chip{min-width:250px;text-align:left}
+.deal-row .txt{flex:1 1 240px;min-height:52px}
+
+.temps{display:flex;gap:10px;flex-wrap:wrap}
+.temp{flex:1 1 150px;max-width:230px;min-height:78px;border:3px solid var(--line);border-radius:14px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.temp b{font-size:34px;line-height:1}
+.temp span{font-size:13px;color:var(--sub)}
+.temp[data-v="A"] b{color:#c2410c} .temp[data-v="B"] b{color:#b7791f} .temp[data-v="C"] b{color:#4a6572}
+.temp[aria-pressed="true"] b,.temp[aria-pressed="true"] span{color:#fff}
+.temp[data-v="A"][aria-pressed="true"]{background:#c2410c;border-color:#c2410c}
+.temp[data-v="B"][aria-pressed="true"]{background:#b7791f;border-color:#b7791f}
+.temp[data-v="C"][aria-pressed="true"]{background:#4a6572;border-color:#4a6572}
+.tb{display:inline-flex;width:30px;height:30px;border-radius:8px;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;margin-right:8px;vertical-align:2px}
+.tb.A{background:#c2410c} .tb.B{background:#b7791f} .tb.C{background:#4a6572}
+.memo-warn{margin:0 0 6px;padding:8px 12px;border-radius:10px;background:var(--dng-bg);color:var(--dng);font-weight:700;font-size:15px}
+#in-memo{width:100%;min-height:110px;padding:10px 12px;border:2px solid var(--line);border-radius:12px;resize:vertical;background:#fff}
+#in-memo:focus{outline:none;border-color:var(--pri)}
+.mgmt{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.mgmt .txt{width:220px;flex:0 1 220px}
+
+/* ---------- 下部アクションバー ---------- */
+#actionbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(255,255,255,.97);border-top:1px solid var(--line);
+  display:flex;gap:10px;align-items:center;padding:10px calc(var(--sar) + 16px) calc(var(--sab) + 10px) calc(var(--sal) + 16px)}
+.btn{min-height:56px;padding:0 20px;border-radius:14px;font-weight:700;font-size:17px;background:#e9eef0;color:var(--ink)}
+.btn.pri{background:var(--pri);color:#fff}
+.btn.dng{background:var(--dng);color:#fff}
+.btn.ghost-dng{background:#fff;color:var(--dng);border:2px solid #efb1ab}
+.btn.warn{background:#ffb020;color:#2b1800}
+#btn-save{margin-left:auto;min-width:260px;font-size:21px}
+@media (max-width:700px){#btn-save{min-width:0;flex:1}}
+
+/* ---------- 一覧 ---------- */
+.list-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+#list-q{flex:1 1 240px;min-height:52px;padding:6px 14px;border:2px solid var(--line);border-radius:12px;font-size:20px}
+.rows{display:flex;flex-direction:column;gap:6px}
+.row{display:grid;grid-template-columns:92px 1.4fr 1fr 1.4fr 1fr;gap:10px;align-items:center;min-height:60px;padding:8px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;text-align:left;width:100%}
+.row:active{background:var(--pri-l)}
+.row.hot{border-left:6px solid var(--hot)}
+.row .t{font-variant-numeric:tabular-nums;color:var(--sub);font-size:15px}
+.row .fid{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+.row .fid small{font-size:13px;color:var(--sub);font-weight:600;margin-left:4px}
+.row .sub{font-size:14px;color:#33414a}
+.row .rid{font-size:13px;color:var(--sub);text-align:right}
+.row .edited{font-size:12px;color:var(--warn);margin-left:4px}
+.hotb{display:inline-block;background:var(--hot);color:#fff;font-size:12px;font-weight:800;border-radius:6px;padding:1px 6px;margin-right:6px}
+@media (max-width:760px){
+  .row{grid-template-columns:70px 1fr 1fr}
+  .row .act,.row .rid{display:none}
+}
+.empty{padding:40px 10px;text-align:center;color:var(--sub)}
+
+/* ---------- 設定 ---------- */
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.card h2{font-size:18px;margin:0 0 10px;color:var(--pri-d)}
+.card p.note{font-size:14px;color:var(--sub);margin:4px 0 10px}
+.set-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:900px){.set-grid.cols{grid-template-columns:1fr 1fr 1fr}}
+.set-grid label{display:flex;flex-direction:column;gap:4px;font-weight:700;font-size:15px}
+.set-grid label small{font-weight:500;color:var(--sub)}
+.set-grid input[type=text],.set-grid input[type=number],.set-grid input[type=url],.set-grid textarea{min-height:48px;padding:8px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;width:100%}
+.set-grid textarea{min-height:190px;line-height:1.5;font-size:16px}
+.seg{display:inline-flex;border:2px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{min-height:48px;padding:0 16px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--pri);color:#fff}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:15px;margin:0 0 10px}
+.kv dt{color:var(--sub)} .kv dd{margin:0;font-weight:600}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- ダイアログ・テンキー・トースト ---------- */
+.overlay{position:fixed;inset:0;z-index:100;background:rgba(10,20,25,.5);display:flex;align-items:center;justify-content:center;padding:20px}
+.dlg{background:#fff;border-radius:18px;max-width:560px;width:100%;padding:22px 22px 18px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;overflow:auto}
+.dlg h3{margin:0 0 8px;font-size:20px}
+.dlg .msg{white-space:pre-line;margin:0 0 14px;color:#33414a}
+.dlg .dlg-body{margin-bottom:14px}
+.dlg .dlg-body input{width:100%;min-height:52px;padding:8px 14px;border:2px solid var(--line);border-radius:12px;font-size:20px}
+.dlg .dlg-err{color:var(--dng);font-weight:700;font-size:14px;min-height:20px;margin-top:6px}
+.dlg .btns{justify-content:flex-end}
+.dlg .btns .btn{flex:1 1 150px}
+.pad{max-width:500px;padding:18px}
+.pad h3{text-align:center}
+.pad-disp{width:100%;min-height:72px;text-align:center;font-size:40px;font-weight:800;letter-spacing:.12em;border:3px solid var(--pri);border-radius:14px;background:var(--pri-l);font-variant-numeric:tabular-nums;color:var(--ink)}
+.pad-disp:focus{outline:none}
+.pad .fmsg{text-align:center;margin:6px 0 4px}
+.pad-added{text-align:center;font-size:14px;color:var(--sub);min-height:20px;margin-bottom:6px}
+.pad-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
+.pad-keys button{min-height:72px;border-radius:14px;background:#e9eef0;font-size:32px;font-weight:700}
+.pad-keys button:active{background:#c9d6da}
+.pad-keys .fn{font-size:18px;background:#dfe5e8}
+.pad .btns{flex-wrap:nowrap}
+.pad .btns .btn{flex:1 1 0;min-height:60px;padding:0 10px;white-space:nowrap;font-size:16px}
+.pad .btns .btn.pri{flex:1.2 1 0;font-size:19px}
+@media (max-height:700px){.pad-keys button{min-height:56px}.pad-disp{min-height:60px;font-size:32px}}
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 96px);transform:translateX(-50%) translateY(20px);z-index:120;background:#16252b;color:#fff;border-radius:14px;padding:14px 22px;font-weight:700;font-size:17px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="chrome">
+  <header id="topbar">
+    <div class="stat"><span class="k">本日の保存</span><span class="v"><span id="st-today">0</span> <small>件</small> <span id="st-today-p">0</span> <small>名</small></span></div>
+    <div class="stat"><span class="k">この端末</span><span class="v" id="st-device">-</span></div>
+    <button type="button" class="stat" id="st-backup" title="CSV書き出し">
+      <span class="k">最終バックアップ（CSV書き出し）</span>
+      <span class="v" id="st-backup-time">未実施</span>
+      <span class="sub" id="st-backup-sub"></span>
+    </button>
+    <button type="button" id="btn-survey" hidden>アンケートを開く</button>
+  </header>
+  <nav id="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="input" aria-selected="true">入力</button>
+    <button type="button" role="tab" data-tab="list" aria-selected="false">保存済み一覧 <span class="count" id="tab-list-count"></span></button>
+    <button type="button" role="tab" data-tab="settings" aria-selected="false">設定 <span class="badge" id="tab-settings-badge" hidden>!</span></button>
+  </nav>
+</div>
+
+<main>
+  <!-- ================= 入力 ================= -->
+  <section id="view-input" class="view">
+    <div id="standalone-banner" class="banner warn" hidden>ホーム画面のアイコンから起動してください。Safariのタブで開いた場合、データはホーム画面版とは別に保存されます。</div>
+    <div id="edit-banner" class="banner info" hidden>
+      <span>編集中：<span id="edit-id"></span></span>
+      <button type="button" class="btn" id="btn-edit-cancel">編集をやめる</button>
+    </div>
+
+    <div class="field" id="fld-visitorIds">
+      <div class="label">来場者ID<em class="req">必須</em><small id="vid-hint"></small></div>
+      <div>
+        <div class="vids" id="vids"></div>
+        <div class="fmsg" id="vid-msg"></div>
+      </div>
+    </div>
+
+    <div class="field" id="fld-staff" hidden>
+      <div class="label">対応担当者</div>
+      <div class="chips" id="grp-staff"></div>
+    </div>
+
+    <div class="field" id="fld-purpose">
+      <div class="label">1. 来場目的<small>1つ選択</small></div>
+      <div class="chips" id="grp-purpose"></div>
+    </div>
+
+    <div class="field" id="fld-deal">
+      <div class="label">2-1. 取引・案件状況<small>複数選択可</small></div>
+      <div>
+        <div class="deal" id="grp-deal"></div>
+        <p class="hint w">商材名・領域のみ記入。案件の具体的な内容や他社の社名は書かないでください</p>
+      </div>
+    </div>
+
+    <div class="field" id="fld-ctcContact">
+      <div class="label">2-2. CTC社内担当部署・担当者<small>自由記入</small></div>
+      <div>
+        <input type="text" id="in-ctcContact" class="txt" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="部署名・担当者名" aria-label="CTC社内担当部署・担当者">
+        <p class="hint">CTC側の部署・担当者のみ（お客様の社名・氏名は書かない）</p>
+      </div>
+    </div>
+
+    <div class="field" id="fld-themes">
+      <div class="label">3. 関心テーマ<small>複数選択可・当てはまらない場合は会話メモへ</small></div>
+      <div class="chips multi" id="grp-themes"></div>
+    </div>
+
+    <div class="field" id="fld-memo">
+      <div class="label">会話メモ<small>課題・要望・次のアクションを簡潔に</small></div>
+      <div>
+        <p class="memo-warn">⚠ 社名・氏名・機密内容（NDAレベル）は書かないでください</p>
+        <textarea id="in-memo" rows="3" aria-label="会話メモ"></textarea>
+      </div>
+    </div>
+
+    <div class="field" id="fld-actions">
+      <div class="label">4. CTCが今後取るべき対応<small>複数選択可</small></div>
+      <div class="chips multi" id="grp-actions"></div>
+    </div>
+
+    <div class="field" id="fld-temp">
+      <div class="label">5. 顧客温度感<small>A・B・Cから1つ</small></div>
+      <div class="temps" id="grp-temp"></div>
+    </div>
+
+    <!-- 管理番号：画面には表示しない（CSVの列としては残す） -->
+    <div class="field" id="fld-mgmtNo" hidden>
+      <div class="label">管理番号<small>任意・ブースの通し番号など</small></div>
+      <div class="mgmt">
+        <input type="text" id="in-mgmtNo" class="txt" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="管理番号">
+        <button type="button" class="btn" id="btn-mgmt-next" hidden></button>
+      </div>
+    </div>
+
+    <div class="field stack" id="fld-itIssue">
+      <div class="label">6. 現在、社内のITにまつわるサポートで最も課題と感じていることは何ですか？<small>1つ選択</small></div>
+      <div class="chips" id="grp-itIssue"></div>
+    </div>
+  
+    <div class="field" id="fld-role">
+      <div class="label">7. お客様の立場<small>1つ選択</small></div>
+      <div class="chips" id="grp-role"></div>
+    </div>
+  </section>
+
+  <!-- ================= 一覧 ================= -->
+  <section id="view-list" class="view" hidden>
+    <div class="list-tools">
+      <input id="list-q" type="text" inputmode="numeric" placeholder="来場者IDで絞り込み" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="来場者IDで絞り込み">
+      <button type="button" class="btn" id="btn-list-clear">絞り込み解除</button>
+    </div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <!-- ================= 設定 ================= -->
+  <section id="view-settings" class="view" hidden>
+    <div id="set-persist-warn" class="banner dng" hidden></div>
+    <div id="set-standalone-warn" class="banner warn" hidden>現在、ホーム画面のアプリとしてではなくブラウザのタブで開いています。本番ではSafariの共有メニュー →「ホーム画面に追加」で追加したアイコンから起動してください（データの保存場所が別になります）。</div>
+
+    <div class="card">
+      <h2>データ・バックアップ</h2>
+      <dl class="kv">
+        <dt>保存件数</dt><dd id="set-count">0件</dd>
+        <dt>未書き出し</dt><dd id="set-unexported">0件</dd>
+        <dt>最終書き出し</dt><dd id="set-lastexport">未実施</dd>
+      </dl>
+      <div class="btns"><button type="button" class="btn pri" id="btn-export">CSVを書き出す（全件／差分）</button></div>
+    </div>
+
+    <div class="card">
+      <h2>端末ID</h2>
+      <p class="note">端末ごとに重複しない名前にしてください（例：iPad-01, iPad-02）。レコードIDは「端末ID-連番」になります。変更しても保存済みレコードのIDは変わりません。</p>
+      <div class="set-grid"><label>端末ID<input type="text" id="set-device" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label></div>
+      <div class="btns" style="margin-top:10px"><button type="button" class="btn" id="btn-save-device">端末IDを変更</button></div>
+    </div>
+
+    <div class="card">
+      <h2>選択肢</h2>
+      <p class="note">1行に1つ入力します。保存済みの記録は選択肢の文字列そのもので残るため、後から変更しても過去の記録は変わりません。「2-1. 取引・案件状況」の選択肢は固定です。関心テーマは行頭に ★ を付けると青枠で表示されます。</p>
+      <div class="set-grid cols" id="set-lists"></div>
+    </div>
+
+    <div class="card">
+      <h2>来場者IDの形式</h2>
+      <p class="note">形式に合わない場合は警告を出しますが、保存はできます。</p>
+      <div class="set-grid cols">
+        <label>最小桁数<input type="number" id="set-fid-min" min="1" max="30" inputmode="numeric"></label>
+        <label>最大桁数<input type="number" id="set-fid-max" min="1" max="30" inputmode="numeric"></label>
+        <div><div style="font-weight:700;font-size:15px;margin-bottom:4px">文字の種類</div>
+          <div class="seg" id="set-fid-charset"><button type="button" data-v="digits">数字のみ</button><button type="button" data-v="alnum">英数字</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>事務局アンケート</h2>
+      <p class="note">URLを入れると画面上部に「アンケートを開く」ボタンが出ます。空欄なら非表示です。開くには通信が必要です。</p>
+      <div class="set-grid"><label>アンケートURL<input type="url" id="set-survey" placeholder="https://..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label></div>
+    </div>
+
+    <div class="card">
+      <div class="btns">
+        <button type="button" class="btn pri" id="btn-save-settings">設定を保存</button>
+        <button type="button" class="btn" id="btn-reset-settings">選択肢・形式を配信時の初期値に戻す</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ストレージ・アプリ</h2>
+      <dl class="kv">
+        <dt>データ永続化</dt><dd id="set-persist">確認中…</dd>
+        <dt>起動方法</dt><dd id="set-mode">-</dd>
+        <dt>使用量</dt><dd id="set-usage">-</dd>
+        <dt>アプリ版</dt><dd id="set-version">-</dd>
+        <dt>更新</dt><dd id="set-update">-</dd>
+      </dl>
+      <div class="btns">
+        <button type="button" class="btn" id="btn-persist">永続化を再要求</button>
+        <button type="button" class="btn" id="btn-check-update">更新を確認</button>
+        <button type="button" class="btn pri" id="btn-apply-update" hidden>更新して再読み込み</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>全データ削除</h2>
+      <p class="note">この端末の記録をすべて削除します。元に戻せません。必ず先に全件CSVを書き出してください。連番はリセットされません（ID重複防止のため）。</p>
+      <button type="button" class="btn ghost-dng" id="btn-wipe">全データ削除…</button>
+    </div>
+  </section>
+</main>
+
+<footer id="actionbar">
+  <button type="button" class="btn" id="btn-undo">直前の1件を取り消す</button>
+  <button type="button" class="btn ghost-dng" id="btn-delete" hidden>この記録を削除</button>
+  <button type="button" class="btn pri" id="btn-save">保存する</button>
+</footer>
+
+<div id="modal-root"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
